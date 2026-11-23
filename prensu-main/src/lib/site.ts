@@ -1,5 +1,5 @@
 export const SITE_URL = (
-  process.env.NEXT_PUBLIC_SITE_URL ?? "https://prensusonkar-portfolio.netlify.app"
+  process.env.NEXT_PUBLIC_SITE_URL ?? "https://prensu-portfolio.vercel.app"
 ).replace(/\/$/, "");
 
 export const SITE_NAME = "Prensu Sonkar";
