@@ -55,6 +55,10 @@ export default function PortfolioHome() {
   );
   const [currentCategory, setCurrentCategory] = useState<string>("All");
   const [selectedWork, setSelectedWork] = useState<ShowcaseWork | null>(null);
+  // Keep the last selected work mounted so its images stay cached after close
+  const lastWorkRef = useRef<ShowcaseWork | null>(null);
+  if (selectedWork) lastWorkRef.current = selectedWork;
+  const dialogWork = selectedWork ?? lastWorkRef.current;
   const [activeSlide, setActiveSlide] = useState<number>(0);
   const [resumeModalOpen, setResumeModalOpen] = useState<boolean>(false);
   const [pillStyle, setPillStyle] = useState<{ left: number; width: number }>({
@@ -754,6 +758,23 @@ export default function PortfolioHome() {
           </section>
         </main>
 
+        {/* Hidden preloader — keeps all project first-images in browser cache */}
+        <div aria-hidden="true" style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", opacity: 0, pointerEvents: "none" }}>
+          {SHOWCASE_WORKS.map((work) =>
+            work.imgs && work.imgs.length > 0 ? (
+              <Image
+                key={work.imgs[0].src}
+                src={work.imgs[0].src}
+                alt=""
+                width={work.imgs[0].w}
+                height={work.imgs[0].h}
+                sizes="1px"
+                priority
+              />
+            ) : null
+          )}
+        </div>
+
         <dialog
           id="dlg"
           ref={dialogRef}
@@ -777,9 +798,9 @@ export default function PortfolioHome() {
             ×
           </button>
           <div id="dbody" ref={dbodyRef}>
-            {selectedWork && (
+            {dialogWork && (
               <>
-                {selectedWork.imgs && selectedWork.imgs.length > 0 ? (
+                {dialogWork.imgs && dialogWork.imgs.length > 0 ? (
                   <div className="gal-container">
                     <div
                       className="gal"
@@ -787,21 +808,22 @@ export default function PortfolioHome() {
                       onScroll={handleGalleryScroll}
                       onWheel={handleGalleryWheel}
                     >
-                      {selectedWork.imgs.map((img, idx) => (
+                      {dialogWork.imgs.map((img, idx) => (
                         <div className="gal-item" key={img.src}>
                           <Image
                             src={img.src}
-                            alt={`${selectedWork.t} - Design ${idx + 1}`}
+                            alt={`${dialogWork.t} - Design ${idx + 1}`}
                             width={img.w}
                             height={img.h}
                             sizes="(max-width: 860px) 100vw, 860px"
                             priority={idx === 0}
+                            loading={idx === 0 ? "eager" : "lazy"}
                           />
                         </div>
                       ))}
                     </div>
 
-                    {selectedWork.imgs.length > 1 && (
+                    {dialogWork.imgs.length > 1 && (
                       <>
                         <button
                           type="button"
@@ -822,10 +844,10 @@ export default function PortfolioHome() {
 
                         <div className="gal-pagination">
                           <span className="gal-counter">
-                            {activeSlide + 1} / {selectedWork.imgs.length}
+                            {activeSlide + 1} / {dialogWork.imgs.length}
                           </span>
                           <div className="gal-dots">
-                            {selectedWork.imgs.map((_, i) => (
+                            {dialogWork.imgs.map((_, i) => (
                               <button
                                 key={i}
                                 type="button"
@@ -843,20 +865,20 @@ export default function PortfolioHome() {
                   <div
                     className="thumb"
                     style={{
-                      background: `linear-gradient(135deg,${selectedWork.g[0]},${selectedWork.g[1]})`,
+                      background: `linear-gradient(135deg,${dialogWork.g[0]},${dialogWork.g[1]})`,
                     }}
                   >
-                    <span>{selectedWork.t}</span>
+                    <span>{dialogWork.t}</span>
                   </div>
                 )}
                 <div className="mb">
                   <small style={{ color: "var(--acc)", fontWeight: 700 }}>
-                    {selectedWork.c}
+                    {dialogWork.c}
                   </small>
-                  <h3>{selectedWork.t}</h3>
-                  <p>{selectedWork.d}</p>
+                  <h3>{dialogWork.t}</h3>
+                  <p>{dialogWork.d}</p>
                   <div className="tags">
-                    {selectedWork.tools.map((tool) => (
+                    {dialogWork.tools.map((tool) => (
                       <span key={tool}>{tool}</span>
                     ))}
                   </div>

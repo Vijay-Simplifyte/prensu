@@ -659,6 +659,15 @@ a {
   }
 }
 
+@keyframes ps-spin {
+  to { transform: rotate(360deg); }
+}
+.spin {
+  animation: ps-spin 0.75s linear infinite;
+}
+
+
+
 .ps-shell .card:hover {
   box-shadow: 0 20px 40px -20px var(--acc);
 }
@@ -1347,10 +1356,15 @@ a {
     border-radius: 10px !important;
   }
 
-  .resume-floating-actions {
-    top: 0.65rem !important;
-    right: 0.65rem !important;
-    gap: 0.4rem !important;
+  .resume-toolbar {
+    padding: 0.45rem 0.6rem !important;
+    gap: 0.35rem !important;
+    flex-wrap: wrap !important;
+  }
+
+  .resume-toolbar button {
+    font-size: 0.72rem !important;
+    padding: 0.35rem 0.6rem !important;
   }
 
   .resume-paper-body {

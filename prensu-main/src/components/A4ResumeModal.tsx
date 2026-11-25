@@ -1,18 +1,9 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-  X,
-  Printer,
-  Mail,
-  Phone,
-  MapPin,
-  Globe,
-  ExternalLink,
-} from "lucide-react";
+import { X, Printer, Download, Loader2 } from "lucide-react";
 import { PROFILE_DATA } from "@/data/profile";
-import { LinkedinIcon, GithubIcon, BehanceIcon } from "@/components/SocialIcons";
 import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 
@@ -25,6 +16,48 @@ export default function A4ResumeModal({ isOpen, onClose }: A4ResumeModalProps) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
+  const resumeBodyRef = useRef<HTMLDivElement>(null);
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownload = useCallback(async () => {
+    const el = resumeBodyRef.current;
+    if (!el || downloading) return;
+    setDownloading(true);
+    try {
+      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+        import("html2canvas"),
+        import("jspdf"),
+      ]);
+      const canvas = await html2canvas(el, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+        logging: false,
+      });
+      const imgData = canvas.toDataURL("image/jpeg", 0.95);
+      // A4 dimensions in mm
+      const A4_W = 210;
+      const A4_H = 297;
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const imgW = A4_W;
+      const imgH = (canvas.height * A4_W) / canvas.width;
+      let posY = 0;
+      let remaining = imgH;
+      let page = 0;
+      while (remaining > 0) {
+        if (page > 0) pdf.addPage();
+        pdf.addImage(imgData, "JPEG", 0, -posY, imgW, imgH);
+        posY += A4_H;
+        remaining -= A4_H;
+        page++;
+      }
+      pdf.save("Prensu-Sonkar-Resume.pdf");
+    } catch (err) {
+      console.error("PDF generation failed", err);
+    } finally {
+      setDownloading(false);
+    }
+  }, [downloading]);
 
   useBodyScrollLock(isOpen);
   useFocusTrap(isOpen, overlayRef);
@@ -74,68 +107,6 @@ export default function A4ResumeModal({ isOpen, onClose }: A4ResumeModalProps) {
           }}
           onClick={onClose}
         >
-          {/* Floating Controls: Print & Close */}
-          <div
-            className="no-print resume-floating-actions"
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              position: "fixed",
-              top: "1.25rem",
-              right: "1.5rem",
-              zIndex: 350,
-              display: "flex",
-              alignItems: "center",
-              gap: "0.6rem",
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => window.print()}
-              style={{
-                background: "var(--primary)",
-                color: "var(--on-primary)",
-                border: "none",
-                padding: "0.5rem 1.15rem",
-                borderRadius: "9999px",
-                fontSize: "0.8125rem",
-                fontWeight: 700,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "0.45rem",
-                cursor: "pointer",
-                boxShadow: "var(--shadow-md)",
-                transition: "all 0.15s ease",
-              }}
-              title="Print or Save Resume as A4 PDF"
-            >
-              <Printer size={15} /> Print / Save PDF
-            </button>
-
-            <button
-              ref={closeButtonRef}
-              type="button"
-              onClick={onClose}
-              aria-label="Close resume"
-              style={{
-                width: "36px",
-                height: "36px",
-                borderRadius: "50%",
-                background: "var(--bg-surface)",
-                color: "var(--text-primary)",
-                border: "1px solid var(--border-medium)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer",
-                boxShadow: "var(--shadow-md)",
-                transition: "all 0.15s ease",
-              }}
-              title="Close Resume View"
-            >
-              <X size={18} />
-            </button>
-          </div>
-
           {/* Clean A4 Paper Resume Card */}
           <motion.div
             initial={{ opacity: 0, scale: 0.96 }}
@@ -161,8 +132,98 @@ export default function A4ResumeModal({ isOpen, onClose }: A4ResumeModalProps) {
               boxShadow: "0 25px 60px rgba(0,0,0,0.5)",
             }}
           >
+            {/* ── In-card toolbar ── */}
+            <div
+              className="no-print resume-toolbar"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "0.6rem 1rem",
+                borderBottom: "1px solid #e2e8f0",
+                background: "#ffffff",
+                flexShrink: 0,
+              }}
+            >
+              {/* Left: Print + Download PDF */}
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  style={{
+                    background: "var(--primary)",
+                    color: "var(--on-primary)",
+                    border: "none",
+                    padding: "0.42rem 0.9rem",
+                    borderRadius: "6px",
+                    fontSize: "0.8rem",
+                    fontWeight: 700,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.4rem",
+                    cursor: "pointer",
+                    transition: "opacity 0.15s",
+                  }}
+                  title="Print or save as PDF"
+                >
+                  <Printer size={14} /> Print / Save PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDownload}
+                  disabled={downloading}
+                  style={{
+                    background: "transparent",
+                    color: downloading ? "var(--primary-border)" : "var(--primary)",
+                    border: "1px solid var(--primary-border)",
+                    padding: "0.42rem 0.9rem",
+                    borderRadius: "6px",
+                    fontSize: "0.8rem",
+                    fontWeight: 600,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.4rem",
+                    cursor: downloading ? "not-allowed" : "pointer",
+                    transition: "opacity 0.15s",
+                    opacity: downloading ? 0.65 : 1,
+                  }}
+                  title="Download as PDF"
+                >
+                  {downloading
+                    ? <><Loader2 size={14} className="spin" /> Generating…</>
+                    : <><Download size={14} /> Download PDF</>}
+                </button>
+              </div>
+
+              {/* Right: Close */}
+              <button
+                ref={closeButtonRef}
+                type="button"
+                onClick={onClose}
+                aria-label="Close resume"
+                style={{
+                  width: "32px",
+                  height: "32px",
+                  borderRadius: "50%",
+                  background: "transparent",
+                  color: "var(--primary)",
+                  border: "1px solid var(--primary-border)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                  transition: "background 0.15s",
+                  flexShrink: 0,
+                }}
+                title="Close"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
             <div
               id="printable-resume"
+              ref={resumeBodyRef}
               className="resume-paper-body"
               style={{
                 flex: 1,
