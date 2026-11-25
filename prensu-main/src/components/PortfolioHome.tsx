@@ -6,7 +6,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
   type CSSProperties,
   type MouseEvent,
 } from "react";
@@ -25,34 +24,8 @@ type PageName = "home" | "projects" | "about";
 const PAGE_NAMES: PageName[] = ["home", "projects", "about"];
 const HERO_WORDS = ["Prensu", "Sonkar"];
 
-function resolvePageFromHash(hash: string): PageName {
-  const raw = hash.replace(/^#/, "");
-  if (raw === "resume") return "about";
-  if (raw === "work") return "projects";
-  if (PAGE_NAMES.includes(raw as PageName)) return raw as PageName;
-  return "home";
-}
-
-function subscribeHash(callback: () => void) {
-  window.addEventListener("hashchange", callback);
-  return () => window.removeEventListener("hashchange", callback);
-}
-
-function getHashSnapshot(): PageName {
-  if (typeof window === "undefined") return "home";
-  return resolvePageFromHash(window.location.hash || "#home");
-}
-
-function getHashServerSnapshot(): PageName {
-  return "home";
-}
-
 export default function PortfolioHome() {
-  const page = useSyncExternalStore(
-    subscribeHash,
-    getHashSnapshot,
-    getHashServerSnapshot
-  );
+  const [activePage, setActivePage] = useState<PageName>("home");
   const [currentCategory, setCurrentCategory] = useState<string>("All");
   const [selectedWork, setSelectedWork] = useState<ShowcaseWork | null>(null);
   // Keep the last selected work mounted so its images stay cached after close
@@ -71,6 +44,11 @@ export default function PortfolioHome() {
     projects: null,
     about: null,
   });
+  const sectionRefs = useRef<Record<PageName, HTMLElement | null>>({
+    home: null,
+    projects: null,
+    about: null,
+  });
   const dialogRef = useRef<HTMLDialogElement | null>(null);
   const dbodyRef = useRef<HTMLDivElement | null>(null);
   const galleryRef = useRef<HTMLDivElement | null>(null);
@@ -78,8 +56,8 @@ export default function PortfolioHome() {
   const openResumeModal = useCallback(() => setResumeModalOpen(true), []);
   const closeResumeModal = useCallback(() => setResumeModalOpen(false), []);
 
-  const updatePill = useCallback((activePage: PageName) => {
-    const activeLink = navLinksRef.current[activePage];
+  const updatePill = useCallback((currentPage: PageName) => {
+    const activeLink = navLinksRef.current[currentPage];
     if (!activeLink) return;
     setPillStyle({
       left: activeLink.offsetLeft,
@@ -88,35 +66,81 @@ export default function PortfolioHome() {
   }, []);
 
   useEffect(() => {
-    window.scrollTo(0, 0);
-  }, [page]);
-
-  useEffect(() => {
-    const raf = requestAnimationFrame(() => updatePill(page));
-    const handleResize = () => updatePill(page);
+    const raf = requestAnimationFrame(() => updatePill(activePage));
+    const handleResize = () => updatePill(activePage);
 
     window.addEventListener("resize", handleResize);
     if (document.fonts && document.fonts.ready) {
-      document.fonts.ready.then(() => updatePill(page));
+      document.fonts.ready.then(() => updatePill(activePage));
     }
 
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", handleResize);
     };
-  }, [page, updatePill]);
+  }, [activePage, updatePill]);
+
+  // IntersectionObserver to highlight active nav based on scroll position
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        // Find the section most visible in the viewport
+        let best: { page: PageName; ratio: number } | null = null;
+        entries.forEach((entry) => {
+          const id = entry.target.id as PageName;
+          if (!PAGE_NAMES.includes(id)) return;
+          if (!best || entry.intersectionRatio > best.ratio) {
+            best = { page: id, ratio: entry.intersectionRatio };
+          }
+        });
+        if (best && (best as { page: PageName; ratio: number }).ratio > 0.1) {
+          setActivePage((best as { page: PageName; ratio: number }).page);
+        }
+      },
+      { threshold: [0.1, 0.3, 0.5, 0.7] }
+    );
+
+    PAGE_NAMES.forEach((name) => {
+      const el = sectionRefs.current[name];
+      if (el) observer.observe(el);
+    });
+
+    return () => observer.disconnect();
+  }, []);
+
+  // Handle initial hash on load
+  useEffect(() => {
+    const hash = window.location.hash.replace(/^#/, "");
+    let target: PageName = "home";
+    if (hash === "projects" || hash === "work") target = "projects";
+    else if (hash === "about" || hash === "resume") target = "about";
+
+    if (target !== "home") {
+      setTimeout(() => {
+        const el = sectionRefs.current[target];
+        if (el) {
+          window.scrollTo({ top: el.offsetTop, behavior: "smooth" });
+        }
+      }, 100);
+    }
+  }, []);
+
+  const scrollToSection = useCallback((target: PageName) => {
+    const el = sectionRefs.current[target];
+    if (el) {
+      window.scrollTo({ top: el.offsetTop, behavior: "smooth" });
+      setActivePage(target);
+      // Update URL hash without triggering navigation
+      history.pushState(null, "", `#${target}`);
+    }
+  }, []);
 
   const handleNavClick = useCallback(
     (e: MouseEvent<HTMLAnchorElement>, targetPage: PageName) => {
       e.preventDefault();
-      const targetHash = `#${targetPage}`;
-      if (window.location.hash !== targetHash) {
-        window.location.hash = targetHash;
-      } else {
-        window.scrollTo(0, 0);
-      }
+      scrollToSection(targetPage);
     },
-    []
+    [scrollToSection]
   );
 
   const filteredWorks = useMemo(
@@ -279,7 +303,7 @@ export default function PortfolioHome() {
                 navLinksRef.current.home = el;
               }}
               href="#home"
-              aria-current={page === "home" ? "page" : undefined}
+              aria-current={activePage === "home" ? "page" : undefined}
               onClick={(e) => handleNavClick(e, "home")}
             >
               Home
@@ -289,7 +313,7 @@ export default function PortfolioHome() {
                 navLinksRef.current.projects = el;
               }}
               href="#projects"
-              aria-current={page === "projects" ? "page" : undefined}
+              aria-current={activePage === "projects" ? "page" : undefined}
               onClick={(e) => handleNavClick(e, "projects")}
             >
               Projects
@@ -299,7 +323,7 @@ export default function PortfolioHome() {
                 navLinksRef.current.about = el;
               }}
               href="#about"
-              aria-current={page === "about" ? "page" : undefined}
+              aria-current={activePage === "about" ? "page" : undefined}
               onClick={(e) => handleNavClick(e, "about")}
             >
               About me
@@ -346,8 +370,9 @@ export default function PortfolioHome() {
         <main id="main">
           {/* 1. Home */}
           <section
-            className={`page${page === "home" ? " on" : ""}`}
+            className="page"
             id="home"
+            ref={(el) => { sectionRefs.current.home = el; }}
           >
             <div className="hero">
               {/* ── Space scene SVG — SMIL animations (browser-native, always works) ── */}
@@ -538,11 +563,32 @@ export default function PortfolioHome() {
               </div>
 
               {/* Scroll-down indicator — desktop only */}
-              <div className="scroll-hint" aria-hidden="true">
-                <span>Scroll</span>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
+              <div
+                className="scroll-hint"
+                role="button"
+                tabIndex={0}
+                aria-label="Scroll to projects"
+                onClick={(e) => {
+                  const el = e.currentTarget;
+                  el.classList.remove("ps-clicked");
+                  void el.offsetWidth; // force reflow to restart animation
+                  el.classList.add("ps-clicked");
+                  scrollToSection("projects");
+                  setTimeout(() => el.classList.remove("ps-clicked"), 600);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.currentTarget.click();
+                  }
+                }}
+              >
+                <div className="scroll-hint-inner">
+                  <div className="scroll-hint-ring" aria-hidden="true" />
+                  <span>Scroll</span>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </div>
               </div>
             </div>
             <div className="tick" aria-hidden="true">
@@ -566,8 +612,9 @@ export default function PortfolioHome() {
 
           {/* 2. Projects */}
           <section
-            className={`page${page === "projects" ? " on" : ""}`}
+            className="page"
             id="projects"
+            ref={(el) => { sectionRefs.current.projects = el; }}
           >
             <h2 className="t">Projects</h2>
             <p className="sub">
@@ -648,14 +695,15 @@ export default function PortfolioHome() {
 
           {/* 3. About me */}
           <section
-            className={`page${page === "about" ? " on" : ""}`}
+            className="page"
             id="about"
+            ref={(el) => { sectionRefs.current.about = el; }}
           >
             <h2 className="t">About me</h2>
             <div className="ab">
               <div>
                 <p>
-                  I’m a UI/UX designer with hands-on agency experience at
+                  I'm a UI/UX designer with hands-on agency experience at
                   Simplifyte, where I designed website interfaces, landing pages
                   and mobile screens, and the digital and print materials that go
                   with them.
@@ -737,7 +785,7 @@ export default function PortfolioHome() {
             </div>
 
             <div className="contact" id="resume">
-              <h3>Let’s work together</h3>
+              <h3>Let's work together</h3>
               <p>
                 <a href={`mailto:${PROFILE_DATA.email}`}>{PROFILE_DATA.email}</a>{" "}
                 ·{" "}
